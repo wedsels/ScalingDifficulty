@@ -52,4 +52,6 @@ if MCM and MCM.EventButton then
     )
 
     Button( "Seed" )
+
+    Button( "RefreshHealth" )
 end

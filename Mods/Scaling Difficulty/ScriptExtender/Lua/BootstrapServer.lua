@@ -1,13 +1,11 @@
 local _V = require( "Server/Variables" )
 local _F = require( "Server/Functions" )( _V )
-local _H = require( "Server/Hooks" )( _V, _F )
+local _E = require( "Server/Entity" )( _V, _F )
+local _H = require( "Server/Hooks" )( _V, _F, _E )
 local _J = require( "Server/Json" )
 
 Ext.RegisterConsoleCommand( "BPSD", function() print( _J( _V ) ) end )
 Ext.RegisterConsoleCommand( "SSD", function() print( _V.Seed ) end )
-
-Ext.Vars.RegisterModVariable( ModuleUUID, "Seed", {} )
-Ext.Vars.RegisterUserVariable( "ScalingDifficultySpellCache", {} )
 
 if MCM then
     local function split( str )
@@ -35,10 +33,18 @@ if MCM then
                 modvar.Seed = math.random( math.maxinteger )
                 _V.Seed = modvar.Seed
 
-                _F.UpdateNPC()
-            elseif payload.settingId == "Blacklist" then
-                _F.BlacklistNPC()
-                _F.UpdateNPC()
+                _E.UpdateNPC()
+            elseif payload.settingId == "RefreshHealth" then
+                for _,ent in pairs( Ext.Entity.GetAllEntities() ) do
+                    local uuid = _F.UUID( ent )
+                    if uuid then
+                        Osi.AddBoosts( uuid, "IncreaseMaxHP( 0 )", _V.Key, "" )
+                        Ext.Timer.WaitFor( 500, function() Osi.RemoveBoosts( uuid, "IncreaseMaxHP( 0 )", 0, _V.Key, "" ) end )
+                    end
+                end
+            elseif payload.settingId:find( "Blacklist" ) then
+                _F.Blacklist()
+                _E.UpdateNPC()
             elseif payload.value ~= nil then
                 local s = split( payload.settingId )
 
@@ -48,7 +54,7 @@ if MCM then
 
                 for u,e in pairs( _V.Entities ) do
                     if e.Type == s[ 2 ] then
-                        _F.UpdateNPC( u )
+                        _E.UpdateNPC( u )
                     end
                 end
             end

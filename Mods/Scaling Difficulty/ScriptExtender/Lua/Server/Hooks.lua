@@ -1,8 +1,27 @@
 --- @param _V _V
 --- @param _F _F
-return function( _V, _F )
+--- @param _E Entity
+return function( _V, _F, _E )
+    local Entities = {}
+    Ext.Entity.OnCreateDeferred( "EocLevel", function( ent ) Entities[ #Entities + 1 ] = ent end )
+
+    local function Dispatch( func, ent, index )
+        if not ent then return end
+
+        local uuid = _F.UUID( ent )
+        if not uuid then return end
+
+        local entity = _V.Entities[ uuid ]
+        if not entity then _E.AddNPC( ent ) return end
+
+        entity[ func ]( entity, index )
+    end
+
     Ext.Events.GameStateChanged:Subscribe(
         function( e )
+            if e.FromState == "Running" and e.ToState == "Save" then _E.UpdateNPC( nil, true ) return end
+            if e.FromState == "Save" and e.ToState == "Running" then _E.UpdateNPC() return end
+
             if e.FromState ~= "LoadLevel" or e.ToState ~= "Sync" then return end
 
             local modvar = Ext.Vars.GetModVariables( ModuleUUID )
@@ -34,46 +53,46 @@ return function( _V, _F )
                     end
                 end
 
-                _F.BlacklistNPC()
+                _F.Blacklist()
             end
 
             SetSettings()
 
-            for _,ent in pairs( Ext.Entity.GetAllEntities() ) do
-                _F.AddNPC( ent )
-            end
-        end
-    )
-
-    local function Dispatch( func, e, index )
-        local uuid, entity, ent = _F.GetEntity( e )
-        if uuid and entity and ent then
-            func( uuid, entity, ent, index )
-        end
-    end
-
-    Ext.Osiris.RegisterListener(
-        "LevelGameplayStarted",
-        2,
-        "after",
-        function()
-            for _,ent in pairs( Ext.Entity.GetAllEntities() ) do
-                local uuid = _F.UUID( ent )
-                if uuid then
-                    Osi.AddBoosts( uuid, "IncreaseMaxHP( 0 )", _V.Key, "" )
-                    Ext.Timer.WaitFor( 500, function() Osi.RemoveBoosts( uuid, "IncreaseMaxHP( 0 )", 0, _V.Key, "" ) end )
+            for _,p in pairs( Osi.DB_Players:Get( nil ) ) do
+                local level = Osi.GetLevel( p[ 1 ] )
+                if level > _V.PartyLevel then
+                    _V.PartyLevel = level
                 end
             end
 
-            Ext.Entity.OnCreate( "EocLevel", function( ent ) Ext.Timer.WaitFor( 500, function() _F.AddNPC( ent ) end ) end )
+            Ext.Events.Tick:Subscribe(
+                function()
+                    if #Entities == 0 then return end
 
-            Ext.Osiris.RegisterListener( "LeveledUp", 1, "after", function( c ) if Osi.DB_Players:Get( _F.UUID( c ) )[ 1 ] then _F.UpdateNPC() end end )
-            Ext.Osiris.RegisterListener( "TurnStarted", 1, "after", function( c ) if Osi.IsActive( _F.UUID( c ) ) ~= 1 then return end _F.UpdateNPC( _F.UUID( c ) ) end )
+                    for _,i in ipairs( Entities ) do
+                        if i then
+                            _E.AddNPC( i )
+                        end
+                    end
+                    Entities = {}
+                end
+            )
 
-            Ext.Entity.OnChange( "Stats", function( ent, _, index ) Dispatch( _F.SetAbilities, ent, index ) end )
-            Ext.Entity.OnChange( "Health", function( ent, _, index ) Dispatch( _F.SetHealth, ent, index ) end )
-            Ext.Entity.OnChange( "EocLevel", function( ent, _, index ) Dispatch( _F.SetLevel, ent ) end )
-            Ext.Entity.OnChange( "Resistances", function( ent, _, index ) Dispatch( _F.SetAC, ent, index ) end )
+            Ext.Entity.OnCreateDeferred(
+                "LevelChanged",
+                function( ent, _, index )
+                    local l = ent.LevelChanged
+                    if l.NewLevel > _V.PartyLevel and Osi.DB_Players:Get( _F.UUID( ent ) )[ 1 ] then
+                        _V.PartyLevel = l.NewLevel
+                        _E.UpdateNPC()
+                    end
+                end
+            )
+
+            Ext.Entity.OnChange( "Stats", function( ent, _, index ) Dispatch( "SetAbilities", ent, index ) end )
+            Ext.Entity.OnChange( "Health", function( ent, _, index ) Dispatch( "SetHealth", ent, index ) end )
+            Ext.Entity.OnChange( "EocLevel", function( ent, _, index ) Dispatch( "SetLevel", ent ) end )
+            Ext.Entity.OnChange( "Resistances", function( ent, _, index ) Dispatch( "SetAC", ent, index ) end )
         end
     )
 end

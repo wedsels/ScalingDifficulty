@@ -1,10 +1,29 @@
 --- @diagnostic disable: missing-fields
 
+local settings = {
+    Server = true,
+    Client = false,
+    WriteableOnServer = true,
+    WriteableOnClient = false,
+    Persistent = true,
+    SyncToClient = false,
+    SyncToServer = false,
+    SyncOnTick = true,
+    SyncOnWrite = false,
+    DontCache = false,
+}
+
+Ext.Vars.RegisterModVariable( ModuleUUID, "Seed", settings )
+Ext.Vars.RegisterUserVariable( "HealthCache", settings )
+Ext.Vars.RegisterUserVariable( "ScalingDifficultySpellCache", settings )
+
 --- @class _V
 local _V = {}
 
 _V.Key = "Scaling Difficulty"
 _V.Seed = 0
+
+_V.PartyLevel = 0
 
 --- @type Stats
 _V.Stats = {}
@@ -63,7 +82,6 @@ _V.General = {}
 --- @field Downscaling boolean
 --- @field ExperienceLevel boolean
 --- @field Spells number
---- @field SpellBlacklist string
 
 --- @type Settings
 _V.Settings = {}
@@ -77,9 +95,10 @@ _V.Settings = {}
 --- @type table< string, Settings >
 _V.Hub = {}
 _V.NPC = {
-    Standard = true,
+    Hostile = true,
+    Ally = true,
     Summon = true,
-    Boss = true,
+    Elite = true,
     Player = true
 }
 
@@ -98,6 +117,10 @@ _V.NPC = {
 
 --- @class Entity
 --- @field Name string
+--- @field UUID string
+--- @field Instance any
+--- @field Disabled boolean
+--- @field Faction string
 --- @field Scaled boolean
 --- @field Type string
 --- @field Hub Settings
@@ -114,12 +137,12 @@ _V.NPC = {
 --- @field OldSkills table< number >
 --- @field OldResource Resource
 --- @field OldSpells number
---- @field OldBlacklist string
+--- @field OldBlacklist table< string, boolean >
 --- @field OldSize number
 --- @field OldWeight number
 --- @field Health Health
 --- @field Modifiers Modifiers
---- @field CleanBoosts boolean
+--- @field SpellCache table< string >
 --- @field Class table< table< table< string > > >
 
 --- @type table< string, Entity >
@@ -128,6 +151,9 @@ _V.Entities = {}
 --- @type table< string, boolean >
 _V.Blacklist = {}
 
+--- @type table< string, boolean >
+_V.SpellBlacklist = {}
+
 _V.Abilities = {
     Strength = 2,
     Dexterity = 3,
@@ -135,6 +161,32 @@ _V.Abilities = {
     Intelligence = 5,
     Wisdom = 6,
     Charisma = 7
+}
+
+_V.AbilitiesReverse = {}
+for s,v in pairs( _V.Abilities ) do
+    _V.AbilitiesReverse[ v ] = s
+end
+
+_V.AbilitiesMatch = {
+    _V.Abilities.Charisma,
+    _V.Abilities.Charisma,
+    _V.Abilities.Charisma,
+    _V.Abilities.Charisma,
+    _V.Abilities.Dexterity,
+    _V.Abilities.Dexterity,
+    _V.Abilities.Dexterity,
+    _V.Abilities.Intelligence,
+    _V.Abilities.Intelligence,
+    _V.Abilities.Intelligence,
+    _V.Abilities.Intelligence,
+    _V.Abilities.Intelligence,
+    _V.Abilities.Strength,
+    _V.Abilities.Wisdom,
+    _V.Abilities.Wisdom,
+    _V.Abilities.Wisdom,
+    _V.Abilities.Wisdom,
+    _V.Abilities.Wisdom
 }
 
 _V.Boosts = {

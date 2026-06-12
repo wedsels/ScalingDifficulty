@@ -15,12 +15,13 @@ return function( _V )
                         Name = "NPC",
                         Tooltip = "Choose which NPC to display.",
                         Type = "radio",
-                        Default = "Standard",
+                        Default = "Hostile",
                         Options = {
                             Choices = {
-                                "Standard",
+                                "Hostile",
+                                "Ally",
                                 "Summon",
-                                "Boss",
+                                "Elite",
                                 "Player"
                             }
                         }
@@ -69,33 +70,47 @@ return function( _V )
                         Name = "Default",
                         Tooltip = "Reset all options to default.",
                         Type = "event_button",
-                        Options = { Label = "Default" }
+                        Options = { Label = "                               " }
                     },
                     {
                         Id = "Disable",
                         Name = "Disable",
                         Tooltip = "Disable all pages and effects.",
                         Type = "event_button",
-                        Options = { Label = "Disable" }
+                        Options = { Label = "                               " }
                     },
                     {
                         Id = "Enable",
                         Name = "Enable",
                         Tooltip = "Enable all pages and effects.",
                         Type = "event_button",
-                        Options = { Label = "Enable" }
+                        Options = { Label = "                               " }
                     },
                     {
                         Id = "Seed",
                         Name = "Seed",
                         Tooltip = "Randomize the savegame seed for all random/variation effects.",
                         Type = "event_button",
-                        Options = { Label = "Seed" }
+                        Options = { Label = "                               " }
+                    },
+                    {
+                        Id = "RefreshHealth",
+                        Name = "RefreshHealth",
+                        Tooltip = "Refresh the health for every NPC, use when NPC health is incorrect or dirtied by other mods or bugs.",
+                        Type = "event_button",
+                        Options = { Label = "                               " }
                     },
                     {
                         Id = "Blacklist",
                         Name = "Blacklist",
                         Tooltip = "Names of the NPC characters to not be scaled, separated by ','.\nEx. rAt,imP,COMMANDER ZhaLk,intellectdevourer",
+                        Type = "text",
+                        Default = ""
+                    },
+                    {
+                        Id = "SpellBlacklist",
+                        Name = "SpellBlacklist",
+                        Tooltip = "The names of spells to not give through NPC character Spells sepearated by ','\nEx. lighting arRow,TrUeSTrike",
                         Type = "text",
                         Default = ""
                     }
@@ -108,10 +123,9 @@ return function( _V )
         Enabled = { "", "checkbox" },
         MaxLevel = { "The NPC character level cannot be higher than X." },
         LevelBonus = { "Level the NPC character to the Party Level + X." },
-        Downscaling = { "Downlevel the NPC character to the Party Level.", "checkbox" },
+        Downscaling = { "Allow the NPC character's Level to go lower than its original value.", "checkbox" },
         ExperienceLevel = { "Whether the NPC character's base Experience Reward will match their scaled Level.", "checkbox" },
         Spells = { "Give NPC character casters a random number of spells up to X * Level.\n\nThe given spells match the NPC character archetype from a custom dynamic class-based system.\nWorks with any modded spells.", "float" },
-        SpellBlacklist = { "The names of spells to not give through NPC character Spells sepearated by ';'\n\nSuch as:\nLighting Arrow;True Strike", "text" },
         HP = { "Increase NPC character HP by X." },
         PercentHP = { "Increase NPC character HP by X%.\n0.05 means each NPC character recieves a 5% max health bonus.", "float" },
         AC = { "Increase NPC character AC by X." },
