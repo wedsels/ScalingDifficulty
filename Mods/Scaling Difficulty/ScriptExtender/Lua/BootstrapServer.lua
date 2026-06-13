@@ -33,7 +33,7 @@ if MCM then
                 modvar.Seed = math.random( math.maxinteger )
                 _V.Seed = modvar.Seed
 
-                _E.UpdateNPC()
+                _E.Update()
             elseif payload.settingId == "RefreshHealth" then
                 for _,ent in pairs( Ext.Entity.GetAllEntities() ) do
                     local uuid = _F.UUID( ent )
@@ -44,7 +44,7 @@ if MCM then
                 end
             elseif payload.settingId:find( "Blacklist" ) then
                 _F.Blacklist()
-                _E.UpdateNPC()
+                _E.Update()
             elseif payload.value ~= nil then
                 local s = split( payload.settingId )
 
@@ -52,9 +52,9 @@ if MCM then
                     _V.Hub[ s[ 2 ] ][ s[ 1 ] ][ s[ 3 ] ] = payload.value
                 end
 
-                for u,e in pairs( _V.Entities ) do
-                    if e.Type == s[ 2 ] then
-                        _E.UpdateNPC( u )
+                for _,i in pairs( _V.Entities ) do
+                    if i.Type == s[ 2 ] then
+                        i:Recalculate()
                     end
                 end
             end

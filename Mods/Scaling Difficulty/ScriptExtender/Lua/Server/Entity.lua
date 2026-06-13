@@ -90,92 +90,77 @@ return function( _V, _F )
 
         entity.Name = entity.Name:gsub( "[%s%p]", "" ):lower()
 
-        local type = entity:Archetype()
-
-        entity.Type = type
-        entity.Hub = _V.Hub[ type ]
-
-        _E.UpdateNPC( uuid )
+        entity:Archetype()
+        entity:Recalculate()
     end
 
-    _E.UpdateNPC = function( uuid, remove )
-        if not uuid then
-            for id,_ in pairs( _V.Entities ) do
-                _E.UpdateNPC( id, remove )
-            end
-        else
-            uuid = _F.UUID( uuid )
-            if not uuid then return end
-
-            local entity = _V.Entities[ uuid ]
-            if not entity then return end
-
-            if not entity.Instance then _V.Entities[ uuid ] = nil return end
-
-            entity.Disabled = remove or _V.Blacklist[ entity.Name ]
-
-            local arch = entity:Archetype()
-            entity.Type = arch
-            entity.Hub = _V.Hub[ arch ]
-
-            local level = math.max( 0, _V.PartyLevel + ( ( not entity.Disabled and entity.Hub.General.Enabled ) and entity.Hub.General.LevelBonus or 0 ) )
-
-            if entity.Hub.General.MaxLevel > 0 then
-                level = math.min( level, entity.Hub.General.MaxLevel )
-            end
-
-            if level < entity.LevelBase and ( ( entity.Disabled or not entity.Hub.General.Enabled ) or not entity.Hub.General.Downscaling ) then
-                level = entity.LevelBase
-            elseif arch == "Player" then
-                entity.LevelBase = 1
-                level = entity.Instance.EocLevel.Level
-            end
-
-            entity.LevelChange = ( entity.Disabled or not entity.Hub.Leveling.Enabled ) and 0 or level - entity.LevelBase
-
-            local ran = _F.RNG( _F.Hash( uuid ) )
-
-            for _,stat in ipairs( _V.Stats ) do
-                if stat ~= "Enabled" then
-                    local vari = ran( entity.Hub.Variation[ stat ] )
-                    if ran() < 0.5 then
-                        vari = vari * -1.0
-                    end
-
-                    entity.Stats[ stat ]
-                        = ( ( entity.Disabled or not entity.Hub.Bonus.Enabled ) and 0 or entity.Hub.Bonus[ stat ] )
-                        + entity.Hub.Leveling[ stat ] * entity.LevelChange
-                        + ( ( entity.Disabled or not entity.Hub.Variation.Enabled ) and 0 or vari )
-                end
-            end
-
-            for _,resource in ipairs( _V.Resource ) do
-                if resource ~= "Enabled" then
-                    entity.Resource[ resource ] = ( entity.Disabled or not entity.Hub.Resource.Enabled ) and "" or entity.Hub.Resource[ resource ]
-                end
-            end
-
-            entity:SetAbilities()
-            entity:SetAC()
-            entity:SetHealth()
-            entity:SetLevel()
-            if not remove then
-                entity:SetBoosts()
-                entity:SetSpells()
-            end
-            entity:SetExperience()
+    _E.Update = function( disable )
+        for _,i in pairs( _V.Entities ) do
+            i:Recalculate( disable )
         end
     end
 
     function _E:Archetype()
-        local h = not self.Hub
-        if not h and self.Type ~= "Hostile" and self.Type ~= "Ally" then return self.Type end
+        if _F.IsPlayer( self.Instance ) then self.Type = "Player"
+        elseif Osi.IsSummon( self.UUID ) == 1 then self.Type = "Summon"
+        elseif _F.IsElite( self.Instance ) then self.Type = "Elite"
+        elseif Osi.GetRelation( self.Faction, "a1542c81-6895-929e-4522-10ce218bb360" ) == 0 then self.Type = "Hostile"
+        else self.Type = "Ally" end
 
-        if h and _F.IsPlayer( self.Instance ) then return "Player" end
-        if h and Osi.IsSummon( self.UUID ) == 1 then return "Summon" end
-        if h and _F.IsElite( self.Instance ) then return "Elite" end
-        if Osi.GetRelation( self.Faction, "a1542c81-6895-929e-4522-10ce218bb360" ) == 0 then return "Hostile" end
-        return "Ally"
+        self.Hub = _V.Hub[ self.Type ]
+    end
+
+    function _E:Recalculate( disable )
+        if not self.Instance then _V.Entities[ self.UUID ] = nil return end
+
+        self.Disabled = disable or _V.Blacklist[ self.Name ]
+
+        for _,resource in ipairs( _V.Resource ) do
+            if resource ~= "Enabled" then
+                self.Resource[ resource ] = ( self.Disabled or not self.Hub.Resource.Enabled ) and "" or self.Hub.Resource[ resource ]
+            end
+        end
+
+        local level = math.max( 0, _V.PartyLevel + ( ( not self.Disabled and self.Hub.General.Enabled ) and self.Hub.General.LevelBonus or 0 ) )
+
+        if self.Hub.General.MaxLevel > 0 then
+            level = math.min( level, self.Hub.General.MaxLevel )
+        end
+
+        if level < self.LevelBase and ( ( self.Disabled or not self.Hub.General.Enabled ) or not self.Hub.General.Downscaling ) then
+            level = self.LevelBase
+        elseif self.Type == "Player" then
+            self.LevelBase = 1
+            level = self.Instance.EocLevel.Level
+        end
+
+        self.LevelChange = ( self.Disabled or not self.Hub.Leveling.Enabled ) and 0 or level - self.LevelBase
+
+        local ran = _F.RNG( _F.Hash( self.UUID ) )
+
+        for _,stat in ipairs( _V.Stats ) do
+            if stat ~= "Enabled" then
+                local vari = ran( self.Hub.Variation[ stat ] )
+                if ran() < 0.5 then
+                    vari = vari * -1.0
+                end
+
+                self.Stats[ stat ]
+                    = ( ( self.Disabled or not self.Hub.Bonus.Enabled ) and 0 or self.Hub.Bonus[ stat ] )
+                    + self.Hub.Leveling[ stat ] * self.LevelChange
+                    + ( ( self.Disabled or not self.Hub.Variation.Enabled ) and 0 or vari )
+            end
+        end
+
+        self:SetAbilities()
+        self:SetAC()
+        self:SetHealth()
+        self:SetLevel()
+        if not disable then
+            self:SetBoosts()
+            self:SetSpells()
+        end
+        self:SetExperience()
     end
 
     function _E:SetSpells()

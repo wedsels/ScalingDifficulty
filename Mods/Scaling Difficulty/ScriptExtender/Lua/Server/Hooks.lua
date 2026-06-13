@@ -3,24 +3,12 @@
 --- @param _E Entity
 return function( _V, _F, _E )
     local Entities = {}
-    Ext.Entity.OnCreateDeferred( "EocLevel", function( ent ) Entities[ #Entities + 1 ] = ent end )
-
-    local function Dispatch( func, ent, index )
-        if not ent then return end
-
-        local uuid = _F.UUID( ent )
-        if not uuid then return end
-
-        local entity = _V.Entities[ uuid ]
-        if not entity then _E.AddNPC( ent ) return end
-
-        entity[ func ]( entity, index )
-    end
+    Ext.Entity.OnCreateDeferred( "Active", function( ent ) Entities[ #Entities + 1 ] = ent end )
 
     Ext.Events.GameStateChanged:Subscribe(
         function( e )
-            if e.FromState == "Running" and e.ToState == "Save" then _E.UpdateNPC( nil, true ) return end
-            if e.FromState == "Save" and e.ToState == "Running" then _E.UpdateNPC() return end
+            if e.FromState == "Running" and e.ToState == "Save" then _E.Update( true ) return end
+            if e.FromState == "Save" and e.ToState == "Running" then _E.Update() return end
 
             if e.FromState ~= "LoadLevel" or e.ToState ~= "Sync" then return end
 
@@ -81,18 +69,53 @@ return function( _V, _F, _E )
             Ext.Entity.OnCreateDeferred(
                 "LevelChanged",
                 function( ent, _, index )
+                    local uuid = _F.UUID( ent )
+                    if not uuid then return end
+
                     local l = ent.LevelChanged
-                    if l.NewLevel > _V.PartyLevel and Osi.DB_Players:Get( _F.UUID( ent ) )[ 1 ] then
+                    if l.PreviousLevel == _V.PartyLevel and l.NewLevel > _V.PartyLevel and Osi.DB_Players:Get( uuid )[ 1 ] then
                         _V.PartyLevel = l.NewLevel
-                        _E.UpdateNPC()
+                        _E.Update()
                     end
                 end
             )
+
+            local function Dispatch( func, ent, index )
+                if not ent then return end
+
+                local uuid = _F.UUID( ent )
+                if not uuid then return end
+
+                local entity = _V.Entities[ uuid ]
+                if not entity then return end
+
+                entity[ func ]( entity, index )
+            end
 
             Ext.Entity.OnChange( "Stats", function( ent, _, index ) Dispatch( "SetAbilities", ent, index ) end )
             Ext.Entity.OnChange( "Health", function( ent, _, index ) Dispatch( "SetHealth", ent, index ) end )
             Ext.Entity.OnChange( "EocLevel", function( ent, _, index ) Dispatch( "SetLevel", ent ) end )
             Ext.Entity.OnChange( "Resistances", function( ent, _, index ) Dispatch( "SetAC", ent, index ) end )
+
+            Ext.Entity.OnChange(
+                "TurnBased",
+                function( ent, _, index )
+                    if ent.TurnBased.ActedThisRoundInCombat or not ent.TurnBased.CanActInCombat then return end
+
+                    local uuid = _F.UUID( ent )
+                    if not uuid then return end
+
+                    local entity = _V.Entities[ uuid ]
+                    if not entity then return end
+
+                    local old = entity.Type
+                    entity:Archetype()
+
+                    if old ~= entity.Type then
+                        entity:Recalculate()
+                    end
+                end
+            )
         end
     )
 end
