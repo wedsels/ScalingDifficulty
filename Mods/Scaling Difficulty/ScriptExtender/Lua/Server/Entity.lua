@@ -5,6 +5,14 @@ return function( _V, _F )
     local _E = {}
     _E.__index = _E
 
+    _E.RemoveNPC = function( ent )
+        local uuid = _F.UUID( ent )
+        if not uuid or not _V.Entities[ uuid ] then return end
+
+        _V.Entities[ uuid ]:Recalculate( true )
+        _V.Entities[ uuid ] = nil
+    end
+
     _E.AddNPC = function( ent )
         local uuid = _F.UUID( ent )
         if not uuid or _V.Entities[ uuid ] then return end
@@ -16,17 +24,7 @@ return function( _V, _F )
 
         if not eoc or not data or not stats or not health then return end
 
-        local xp
-        local statsource = Ext.Stats.Get( data.StatsId )
-        if statsource and statsource.XPReward then
-            local xpsource = Ext.StaticData.Get( statsource.XPReward, "ExperienceReward" )
-            if xpsource then
-                xp = {}
-                for i = 1, 12 do
-                    xp[ i ] = xpsource.PerLevelRewards[ i ]
-                end
-            end
-        end
+        local xp = Ext.Stats.Get( data.StatsId )
 
         ent.Vars.HealthCache = ent.Vars.HealthCache or {
             Hp = health.Hp,
@@ -37,21 +35,21 @@ return function( _V, _F )
             TransformedMaxHp = 0,
             TransformedPercent = 0
         }
-        ent.Vars.ScalingDifficultySpellCache = ent.Vars.ScalingDifficultySpellCache or {}
+        ent.Vars.SpellCache = ent.Vars.SpellCache or {}
+        ent.Vars.NameCache = ( ent.Vars.NameCache or ent.DisplayName and Ext.Loca.GetTranslatedString( ent.DisplayName.Name.Handle.Handle ) or ent.ServerCharacter and ent.ServerCharacter.Template.Name or data.StatsId or uuid ):gsub( "[%s%p]", "" ):lower()
 
         _V.Entities[ uuid ] = setmetatable( {
-            Name = ent.DisplayName and Ext.Loca.GetTranslatedString( ent.DisplayName.Name.Handle.Handle ) or ent.ServerCharacter and ent.ServerCharacter.Template.Name or data.StatsId or uuid,
+            Name = ent.Vars.NameCache,
             UUID = uuid,
             Instance = ent,
             Disabled = false,
-            Faction = ent.ServerCharacter and ent.ServerCharacter.OriginalTemplate and ent.ServerCharacter.OriginalTemplate.CombatComponent.Faction or ent.Faction and ent.Faction.field_8 or "",
+            Faction = "",
             Scaled = false,
             Type = "",
             Hub = _V.Hub[ nil ],
             LevelBase = eoc.Level,
             LevelChange = 0,
-            Experience = xp,
-            Constitution = stats.AbilityModifiers[ 4 ],
+            Experience = xp and _V.Experience[ xp.XPReward ],
             Physical = stats.Abilities[ 2 ] <= stats.Abilities[ 3 ] and "Dexterity" or "Strength",
             Casting = tostring( stats.SpellCastingAbility ),
             Stats = _F.Default( _V.Stats ),
@@ -71,25 +69,19 @@ return function( _V, _F )
             },
             Health = ent.Vars.HealthCache,
             Modifiers = {
-                Original = (
-                    function()
-                        local original = {}
-                        for k,v in pairs( _V.Abilities ) do
-                            original[ k ] = stats.AbilityModifiers[ v ]
-                        end
-                        return original
-                    end
-                )(),
+                Original = {},
                 Current = _F.Default( _F.Keys( _V.Abilities ) )
             },
-            SpellCache = ent.Vars.ScalingDifficultySpellCache,
-            Class = _F.GetClass( ent )
+            SpellCache = ent.Vars.SpellCache
         }, _E )
 
         local entity = _V.Entities[ uuid ]
 
-        entity.Name = entity.Name:gsub( "[%s%p]", "" ):lower()
+        for k,v in pairs( _V.Abilities ) do
+            entity.Modifiers.Original[ k ] = stats.AbilityModifiers[ v ]
+        end
 
+        entity:SetFaction()
         entity:Archetype()
         entity:Recalculate()
     end
@@ -98,6 +90,10 @@ return function( _V, _F )
         for _,i in pairs( _V.Entities ) do
             i:Recalculate( disable )
         end
+    end
+
+    function _E:SetFaction()
+        self.Faction = self.Instance.ServerCharacter and self.Instance.ServerCharacter.OriginalTemplate and self.Instance.ServerCharacter.OriginalTemplate.CombatComponent.Faction or self.Instance.Faction and self.Instance.Faction.field_8 or ""
     end
 
     function _E:Archetype()
@@ -141,7 +137,7 @@ return function( _V, _F )
         for _,stat in ipairs( _V.Stats ) do
             if stat ~= "Enabled" then
                 local vari = ran( self.Hub.Variation[ stat ] )
-                if ran() < 0.5 then
+                if ran( 1.0 ) < 0.5 then
                     vari = vari * -1.0
                 end
 
@@ -164,7 +160,10 @@ return function( _V, _F )
     end
 
     function _E:SetSpells()
-        if not next( self.Class ) then return end
+        if self.Type == "Player" then return end
+
+        local book = self.Instance.SpellBook and self.Instance.SpellBook.Spells
+        if not book then return end
 
         local num = self.Hub.General.Enabled and _F.Whole( self.Hub.General.Spells * ( self.LevelBase + self.LevelChange ) ) or 0
         num = math.min( num, 18 )
@@ -172,15 +171,15 @@ return function( _V, _F )
 
         local spells = {}
 
-        if self.Type ~= "Player" then
-            local seed = _F.Hash( self.UUID )
-            local ran = _F.RNG( seed )
+        local ran = _F.RNG( _F.Hash( self.UUID ) )
 
-            local roll = ran( num, 2 )
-            for _ = 1, roll do
-                local spell = ran( ran( ran( self.Class ) ) )
-                if not _V.SpellBlacklist[ spell ] then
+        local roll = ran( num, 2 )
+        for _=1,roll do
+            for _=0,10 do
+                local spell = ran( _V.Classes[ self.Casting ] )
+                if spell and not _V.SpellBlacklist[ spell ] and Osi.CanShowSpellForCharacter( self.UUID, spell ) == 1 then
                     spells[ #spells + 1 ] = spell
+                    break
                 end
             end
         end
@@ -206,7 +205,7 @@ return function( _V, _F )
         self.OldSpells = num
         self.OldBlacklist = _V.SpellBlacklist
         self.SpellCache = spells
-        self.Instance.Vars.ScalingDifficultySpellCache = self.Instance.Vars.ScalingDifficultySpellCache
+        self.Instance.Vars.SpellCache = self.Instance.Vars.SpellCache
     end
 
     function _E:SetAC( index )
@@ -425,7 +424,7 @@ return function( _V, _F )
         local xp = self.Instance.ServerExperienceGaveOut
         if not xp then return end
 
-        local base = self.Experience[ math.min( #self.Experience, self.Hub.General.ExperienceLevel and self.LevelBase + self.LevelChange or self.LevelBase ) ]
+        local base = self.Experience and self.Experience[ math.min( #self.Experience, self.Hub.General.ExperienceLevel and self.LevelBase + self.LevelChange or self.LevelBase ) ] or 0
         if not base then return end
 
         xp.Experience = math.max( 0, _F.Whole( ( base + self.Stats.Experience ) * ( 1.0 + self.Stats.PercentExperience ) ) )

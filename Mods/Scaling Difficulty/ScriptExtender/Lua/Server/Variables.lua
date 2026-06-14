@@ -15,7 +15,8 @@ local settings = {
 
 Ext.Vars.RegisterModVariable( ModuleUUID, "Seed", settings )
 Ext.Vars.RegisterUserVariable( "HealthCache", settings )
-Ext.Vars.RegisterUserVariable( "ScalingDifficultySpellCache", settings )
+Ext.Vars.RegisterUserVariable( "SpellCache", settings )
+Ext.Vars.RegisterUserVariable( "NameCache", settings )
 
 --- @class _V
 local _V = {}
@@ -127,7 +128,6 @@ _V.NPC = {
 --- @field LevelBase number
 --- @field LevelChange number
 --- @field Experience table< number >
---- @field Constitution string
 --- @field Physical string
 --- @field Casting string
 --- @field Stats Stats
@@ -143,7 +143,6 @@ _V.NPC = {
 --- @field Health Health
 --- @field Modifiers Modifiers
 --- @field SpellCache table< string >
---- @field Class table< table< table< string > > >
 
 --- @type table< string, Entity >
 _V.Entities = {}
@@ -196,51 +195,38 @@ _V.Boosts = {
     Size = "ScaleMultiplier( %f );CarryCapacityMultiplier( %f );Weight( %d )"
 }
 
---- @type table< string, table< string > >
-_V.Classes = {}
-for _,type in pairs( Ext.StaticData.GetAll( "Progression" ) ) do
-    local data = Ext.StaticData.Get( type, "Progression" )
-    if data.IsMulticlass then
-        _V.Classes[ data.Name ] = {}
+local class = {}
+for _,type in pairs( Ext.StaticData.GetAll( "ClassDescription" ) ) do
+    local data = Ext.StaticData.Get( type, "ClassDescription" )
+    if data then
+        local list = Ext.StaticData.Get( data.SpellList, "SpellList" )
+        if list then
+            local s = tostring( data.SpellCastingAbility )
+            class[ s ] = class[ s ] or {}
+            for _,i in pairs( list.Spells ) do
+                class[ s ][ i ] = true
+            end
+        end
     end
 end
-local Blacklist = {
-    Target_Shove = true,
-    Target_Help = true,
-    Target_Dip = true,
-    Shout_Hide = true,
-    Shout_Dash = true,
-    Shout_Disengage = true,
-    Throw_Throw = true,
-    Throw_ImprovisedWeapon = true,
-    Projectile_Jump = true,
-}
---- @type table< string, table< table< string > > >
-_V.SpellLists = {}
-for _,uuid in ipairs( Ext.StaticData.GetAll( "SpellList" ) ) do
-    local data = Ext.StaticData.Get( uuid, "SpellList" )
-    local name = data.Name
 
-    if name and name ~= "" and not Blacklist[ name ] then
-        for class,list in pairs( _V.Classes ) do
-            if name:find( class ) then
-                for _,dsp in pairs( data.Spells ) do
-                    local unique = true
+--- @type table< string, table< string > >
+_V.Classes = {}
+for k,v in pairs( class ) do
+    _V.Classes[ k ] = {}
+    for i,_ in pairs( v ) do
+        _V.Classes[ k ][ # _V.Classes[ k ] + 1 ] = i
+    end
+end
 
-                    for _,tsp in ipairs( list ) do
-                        unique = dsp ~= tsp
-                        if not unique then break end
-                    end
-
-                    if unique then
-                        table.insert( list, dsp )
-                        _V.SpellLists[ dsp ] = _V.SpellLists[ dsp ] or {}
-                        table.insert( _V.SpellLists[ dsp ], list )
-                    end
-                end
-
-                break
-            end
+--- @type table< string, table< integer > >
+_V.Experience = {}
+for _,type in pairs( Ext.StaticData.GetAll( "ExperienceReward" ) ) do
+    local data = Ext.StaticData.Get( type, "ExperienceReward" )
+    if data then
+        _V.Experience[ type ] = {}
+        for i = 1, 12 do
+            _V.Experience[ type ][ i ] = data.PerLevelRewards[ i ]
         end
     end
 end

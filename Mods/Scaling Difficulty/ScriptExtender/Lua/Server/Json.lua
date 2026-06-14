@@ -168,6 +168,7 @@ return function( _V )
 
     local default = {
         Enabled = true,
+        ExperienceLevel = true,
         Spells = 0.75,
         LevelingBossHP = 10.0,
         LevelingHP = 6.0,

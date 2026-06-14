@@ -39,7 +39,6 @@ return function( _V )
             {
                 __call = function( _, range, reroll )
                     local roll = 0
-                    range = range or 1
                     reroll = reroll or 1
 
                     for _ = 1, reroll do
@@ -99,23 +98,6 @@ return function( _V )
         return stat
     end
 
-    _F.GetClass = function( ent )
-        local class = {}
-        local uuid = _F.UUID( ent )
-        local book = ent.SpellBook and ent.SpellBook.Spells
-
-        if uuid and book then
-            for _,data in ipairs( book ) do
-                local spell = data.Id.Prototype
-                if _V.SpellLists[ spell ] then
-                    table.insert( class, _V.SpellLists[ spell ] )
-                end
-            end
-        end
-
-        return class
-    end
-
     _F.IsElite = function( ent )
         local uuid = _F.UUID( ent )
 
@@ -123,13 +105,17 @@ return function( _V )
             return false
         end
 
-        if Osi.IsBoss( uuid ) == 1 then
-            return true
-        end
-
         if ent.ServerCharacter and ent.ServerCharacter.Template and ent.ServerCharacter.Template.CombatComponent and ent.ServerCharacter.Template.CombatComponent.IsBoss then
             return true
         end
+
+        if ent.ActionResources and ent.ActionResources.Resources and
+            (
+                ent.ActionResources.Resources[ "732e23a8-bb1d-4bec-a4df-1dd0e03b56c4" ] or
+                ent.ActionResources.Resources[ "4ebba3a3-f42e-42a6-87af-d36592ba8d49" ] or
+                ent.ActionResources.Resources[ "67581067-020c-4e0d-814f-963714479f8a" ]
+            )
+        then return true end
 
         if ent.ServerPassiveBase then
             for _,t in ipairs( ent.ServerPassiveBase.Passives ) do
@@ -140,19 +126,15 @@ return function( _V )
         end
 
         if ent.DisplayName then
-            local str = Osi.ResolveTranslatedString( ent.DisplayName.Title.Handle.Handle )
+            local str = Ext.Loca.GetTranslatedString( ent.DisplayName.Title.Handle.Handle )
             if str and str ~= "" and str ~= "Novice of the Absolute" and str ~= "Matriphagous Child" then
                 return true
             end
         end
 
-        if ent.ActionResources and ent.ActionResources.Resources and
-            (
-                ent.ActionResources.Resources[ "732e23a8-bb1d-4bec-a4df-1dd0e03b56c4" ] or
-                ent.ActionResources.Resources[ "4ebba3a3-f42e-42a6-87af-d36592ba8d49" ] or
-                ent.ActionResources.Resources[ "67581067-020c-4e0d-814f-963714479f8a" ]
-            )
-        then return true end
+        if Osi.IsBoss( uuid ) == 1 then
+            return true
+        end
 
         return false
     end

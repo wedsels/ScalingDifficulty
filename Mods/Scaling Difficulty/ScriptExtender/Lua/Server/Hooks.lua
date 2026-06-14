@@ -2,9 +2,6 @@
 --- @param _F _F
 --- @param _E Entity
 return function( _V, _F, _E )
-    local Entities = {}
-    Ext.Entity.OnCreateDeferred( "Active", function( ent ) Entities[ #Entities + 1 ] = ent end )
-
     Ext.Events.GameStateChanged:Subscribe(
         function( e )
             if e.FromState == "Running" and e.ToState == "Save" then _E.Update( true ) return end
@@ -53,18 +50,8 @@ return function( _V, _F, _E )
                 end
             end
 
-            Ext.Events.Tick:Subscribe(
-                function()
-                    if #Entities == 0 then return end
-
-                    for _,i in ipairs( Entities ) do
-                        if i then
-                            _E.AddNPC( i )
-                        end
-                    end
-                    Entities = {}
-                end
-            )
+            Ext.Entity.OnCreateDeferred( "Active", function( ent ) _E.AddNPC( ent ) end )
+            Ext.Entity.OnDestroyDeferred( "Active", function( ent ) _E.RemoveNPC( ent ) end )
 
             Ext.Entity.OnCreateDeferred(
                 "LevelChanged",
@@ -80,13 +67,15 @@ return function( _V, _F, _E )
                 end
             )
 
-            local function Dispatch( func, ent, index )
-                if not ent then return end
-
+            local function GetEntity( ent )
                 local uuid = _F.UUID( ent )
                 if not uuid then return end
 
-                local entity = _V.Entities[ uuid ]
+                return _V.Entities[ uuid ]
+            end
+
+            local function Dispatch( func, ent, index )
+                local entity = GetEntity( ent )
                 if not entity then return end
 
                 entity[ func ]( entity, index )
@@ -102,16 +91,28 @@ return function( _V, _F, _E )
                 function( ent, _, index )
                     if ent.TurnBased.ActedThisRoundInCombat or not ent.TurnBased.CanActInCombat then return end
 
-                    local uuid = _F.UUID( ent )
-                    if not uuid then return end
-
-                    local entity = _V.Entities[ uuid ]
+                    local entity = GetEntity( ent )
                     if not entity then return end
 
                     local old = entity.Type
                     entity:Archetype()
 
                     if old ~= entity.Type then
+                        entity:Recalculate()
+                    end
+                end
+            )
+
+            Ext.Entity.OnChange(
+                "Faction",
+                function( ent, _, index )
+                    local entity = GetEntity( ent )
+                    if not entity then return end
+
+                    local old = entity.Faction
+                    entity:SetFaction()
+
+                    if old ~= entity.Faction then
                         entity:Recalculate()
                     end
                 end
