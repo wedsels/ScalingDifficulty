@@ -83,13 +83,13 @@ return function( _V, _F, _E )
 
             Ext.Entity.OnChange( "Stats", function( ent, _, index ) Dispatch( "SetAbilities", ent, index ) end )
             Ext.Entity.OnChange( "Health", function( ent, _, index ) Dispatch( "SetHealth", ent, index ) end )
-            Ext.Entity.OnChange( "EocLevel", function( ent, _, index ) Dispatch( "SetLevel", ent ) end )
+            Ext.Entity.OnChange( "EocLevel", function( ent, _, index ) Dispatch( "SetLevel", ent, index ) end )
             Ext.Entity.OnChange( "Resistances", function( ent, _, index ) Dispatch( "SetAC", ent, index ) end )
 
             Ext.Entity.OnChange(
                 "TurnBased",
                 function( ent, _, index )
-                    if ent.TurnBased.ActedThisRoundInCombat or not ent.TurnBased.CanActInCombat then return end
+                    if index == 128 or not ent.TurnBased.CanActInCombat then return end
 
                     local entity = GetEntity( ent )
                     if not entity then return end

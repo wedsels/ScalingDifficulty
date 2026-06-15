@@ -93,7 +93,7 @@ return function( _V, _F )
     end
 
     function _E:SetFaction()
-        self.Faction = self.Instance.ServerCharacter and self.Instance.ServerCharacter.OriginalTemplate and self.Instance.ServerCharacter.OriginalTemplate.CombatComponent.Faction or self.Instance.Faction and self.Instance.Faction.field_8 or ""
+        self.Faction = self.Instance.Faction and self.Instance.Faction.field_8 or self.Instance.ServerCharacter and self.Instance.ServerCharacter.OriginalTemplate and self.Instance.ServerCharacter.OriginalTemplate.CombatComponent.Faction or ""
     end
 
     function _E:Archetype()
@@ -333,13 +333,29 @@ return function( _V, _F )
         self.Instance.Vars.HealthCache = self.Instance.Vars.HealthCache
     end
 
-    function _E:SetLevel()
+    function _E:SetLevel( index )
         local eoc = self.Instance.EocLevel
         if not eoc or self.Type == "Player" then return end
 
-        eoc.Level = self.LevelBase + self.LevelChange
+        local level = self.LevelBase + self.LevelChange
+        if eoc.Level == level then return end
 
-        self.Instance:Replicate( "EocLevel" )
+        self.Instance:RemoveComponent( "EocLevel" )
+
+        self.Instance:OnDestroyDeferredOnce(
+            "EocLevel",
+            function()
+                self.Instance:CreateComponent( "EocLevel" )
+            end
+        )
+
+        self.Instance:OnCreateDeferredOnce(
+            "EocLevel",
+            function()
+                self.Instance.EocLevel.Level = level
+                self.Instance:Replicate( "EocLevel" )
+            end
+        )
     end
 
     function _E:SetBoosts( remove )
