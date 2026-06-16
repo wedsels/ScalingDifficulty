@@ -97,8 +97,8 @@ return function( _V, _F )
     end
 
     function _E:Archetype()
-        if _F.IsPlayer( self.Instance ) then self.Type = "Player"
-        elseif Osi.IsSummon( self.UUID ) == 1 then self.Type = "Summon"
+        if _F.IsPlayer( self.Instance, self.UUID ) then self.Type = "Player"
+        elseif _F.IsSummon( self.Instance ) then self.Type = "Summon"
         elseif _F.IsElite( self.Instance ) then self.Type = "Elite"
         elseif Osi.GetRelation( self.Faction, "a1542c81-6895-929e-4522-10ce218bb360" ) == 0 then self.Type = "Hostile"
         else self.Type = "Ally" end
@@ -148,15 +148,18 @@ return function( _V, _F )
             end
         end
 
-        self:SetAbilities()
-        self:SetAC()
-        self:SetHealth()
-        self:SetLevel()
-        if not disable then
-            self:SetBoosts()
-            self:SetSpells()
-        end
-        self:SetExperience()
+        self:SetLevel(
+            function()
+                self:SetAbilities()
+                self:SetAC()
+                self:SetHealth()
+                if not disable then
+                    self:SetBoosts()
+                    self:SetSpells()
+                end
+                self:SetExperience()
+            end
+        )
     end
 
     function _E:SetSpells()
@@ -173,15 +176,22 @@ return function( _V, _F )
 
         local ran = _F.RNG( _F.Hash( self.UUID ) )
 
+        local selection = {}
+        for i,_ in pairs( _V.Classes[ self.Casting ] or {} ) do
+            if _F.HasResource( self.Instance, _V.SpellResources[ i ] ) then
+                selection[ #selection + 1 ] = i
+            end
+        end
+
         local roll = ran( num, 2 )
         for _=1,roll do
-            for _=0,10 do
-                local spell = ran( _V.Classes[ self.Casting ] )
-                if spell and not _V.SpellBlacklist[ spell ] and Osi.CanShowSpellForCharacter( self.UUID, spell ) == 1 then
-                    spells[ #spells + 1 ] = spell
-                    break
-                end
+            if #selection == 0 then break end
+
+            local rng = 1 + math.floor( ran( #selection ) )
+            if not _V.SpellBlacklist[ selection[ rng ] ] then
+                spells[ #spells + 1 ] = selection[ rng ]
             end
+            table.remove( selection, rng )
         end
 
         for _,spell in ipairs( spells ) do
@@ -333,12 +343,12 @@ return function( _V, _F )
         self.Instance.Vars.HealthCache = self.Instance.Vars.HealthCache
     end
 
-    function _E:SetLevel( index )
+    function _E:SetLevel( fun )
         local eoc = self.Instance.EocLevel
-        if not eoc or self.Type == "Player" then return end
+        if not eoc or self.Type == "Player" then if fun then fun() end return end
 
         local level = self.LevelBase + self.LevelChange
-        if eoc.Level == level then return end
+        if eoc.Level == level then if fun then fun() end return end
 
         self.Instance:RemoveComponent( "EocLevel" )
 
@@ -354,73 +364,73 @@ return function( _V, _F )
             function()
                 self.Instance.EocLevel.Level = level
                 self.Instance:Replicate( "EocLevel" )
+
+                if fun then fun() end
             end
         )
     end
 
-    function _E:SetBoosts( remove )
+    function _E:SetBoosts()
         local data = self.Instance.Data
         if not data then return end
 
-        if remove or self.OldStats.DamageBonus ~= self.Stats.DamageBonus then
-            if remove or self.OldStats.DamageBonus ~= 0 then
-                Osi.RemoveBoosts( self.UUID, string.format( _V.Boosts.DamageBonus, self.OldStats.DamageBonus ), 0, _V.Key, "" )
+        if self.OldStats.DamageBonus ~= self.Stats.DamageBonus then
+            local oldstat = _F.Whole( self.OldStats.DamageBonus )
+            if oldstat ~= 0 then
+                Osi.RemoveBoosts( self.UUID, string.format( _V.Boosts.DamageBonus, oldstat ), 0, _V.Key, "" )
             end
 
             local stat = _F.Whole( self.Stats.DamageBonus )
-
             if stat ~= 0 then
                 Osi.AddBoosts( self.UUID, string.format( _V.Boosts.DamageBonus, stat ), _V.Key, "" )
             end
 
-            self.OldStats.DamageBonus = stat
+            self.OldStats.DamageBonus = self.Stats.DamageBonus
         end
 
-        if remove or self.OldStats.Attack ~= self.Stats.Attack then
-            if remove or self.OldStats.Attack ~= 0 then
-                Osi.RemoveBoosts( self.UUID, string.format( _V.Boosts.RollBonus, "Attack", self.OldStats.Attack ), 0, _V.Key, "" )
+        if self.OldStats.Attack ~= self.Stats.Attack then
+            local oldstat = _F.Whole( self.OldStats.Attack )
+            if oldstat ~= 0 then
+                Osi.RemoveBoosts( self.UUID, string.format( _V.Boosts.RollBonus, "Attack", oldstat ), 0, _V.Key, "" )
             end
 
             local stat = _F.Whole( self.Stats.Attack )
-
             if stat ~= 0 then
                 Osi.AddBoosts( self.UUID, string.format( _V.Boosts.RollBonus, "Attack", stat ), _V.Key, "" )
             end
 
-            self.OldStats.Attack = stat
+            self.OldStats.Attack = self.Stats.Attack
         end
 
-        if remove or self.OldStats.Size ~= self.Stats.Size then
-            if remove or self.OldStats.Size ~= 0.0 then
+        if self.OldStats.Size ~= self.Stats.Size then
+            if self.OldStats.Size ~= 0.0 then
                 Osi.RemoveBoosts( self.UUID, string.format( _V.Boosts.Size, 1.0 + self.OldStats.Size, 1.0 + self.OldStats.Size, self.OldSize ), 0, _V.Key, "" )
             end
 
-            local stat = self.Stats.Size
-            local weight = _F.Whole( ( data.Weight * ( 1.0 + stat ) - data.Weight ) / 1000.0 )
-
-            if stat ~= 0 then
-                Osi.AddBoosts( self.UUID, string.format( _V.Boosts.Size, 1.0 + stat, 1.0 + stat, weight ), _V.Key, "" )
+            local weight = _F.Whole( ( data.Weight * ( 1.0 + self.Stats.Size ) - data.Weight ) / 1000.0 )
+            if self.Stats.Size ~= 0 then
+                Osi.AddBoosts( self.UUID, string.format( _V.Boosts.Size, 1.0 + self.Stats.Size, 1.0 + self.Stats.Size, weight ), _V.Key, "" )
             end
 
-            self.OldStats.Size = stat
+            self.OldStats.Size = self.Stats.Size
             self.OldSize = weight
         end
 
+        local elvl = self.LevelBase + self.LevelChange
         for _,resource in ipairs( _V.Resource ) do
             if resource ~= "Enabled" then
                 local amount = 0
-                local elvl = self.LevelBase + self.LevelChange
                 for v in string.gmatch( self.Resource[ resource ], "%d+" ) do
                     if elvl >= tonumber( v ) then
                         amount = amount + 1
                     end
                 end
 
-                if remove or self.OldResource[ resource ] ~= amount then
+                if self.OldResource[ resource ] ~= amount then
                     local level = resource:match( "Level([%d])" ) or 0
                     local boost = resource:gsub( "Level[%d]", "" )
 
-                    if remove or self.OldResource[ resource ] ~= 0 then
+                    if self.OldResource[ resource ] ~= 0 then
                         Osi.RemoveBoosts( self.UUID, string.format( _V.Boosts.Resource, boost, self.OldResource[ resource ], level ), 0, _V.Key, "" )
                     end
 

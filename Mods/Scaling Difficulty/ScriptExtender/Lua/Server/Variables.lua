@@ -195,27 +195,19 @@ _V.Boosts = {
     Size = "ScaleMultiplier( %f );CarryCapacityMultiplier( %f );Weight( %d )"
 }
 
-local class = {}
+--- @type table< string, table< string, boolean > >
+_V.Classes = {}
 for _,type in pairs( Ext.StaticData.GetAll( "ClassDescription" ) ) do
     local data = Ext.StaticData.Get( type, "ClassDescription" )
     if data then
         local list = Ext.StaticData.Get( data.SpellList, "SpellList" )
         if list then
             local s = tostring( data.SpellCastingAbility )
-            class[ s ] = class[ s ] or {}
+            _V.Classes[ s ] = _V.Classes[ s ] or {}
             for _,i in pairs( list.Spells ) do
-                class[ s ][ i ] = true
+                _V.Classes[ s ][ i ] = true
             end
         end
-    end
-end
-
---- @type table< string, table< string > >
-_V.Classes = {}
-for k,v in pairs( class ) do
-    _V.Classes[ k ] = {}
-    for i,_ in pairs( v ) do
-        _V.Classes[ k ][ # _V.Classes[ k ] + 1 ] = i
     end
 end
 
@@ -231,16 +223,40 @@ for _,type in pairs( Ext.StaticData.GetAll( "ExperienceReward" ) ) do
     end
 end
 
-_V.JsonBlueprint = Ext.Json.Parse( Ext.IO.LoadFile( "Mods/Scaling Difficulty/MCM_blueprint.json", "data" ) )
-
+--- @type table< string, string >
+_V.SpellResources = {}
 --- @type table< string, table< string > >
 _V.SpellNames = {}
 for _,spell in ipairs( Ext.Stats.GetStats( "SpellData" ) ) do
     local data = Ext.Stats.Get( spell )
+
+    _V.SpellResources[ spell ] = data.UseCosts
+
     local name = Ext.Loca.GetTranslatedString( data.DisplayName ):gsub( "[%s%p]", "" ):lower()
+
     _V.SpellNames[ name ] = _V.SpellNames[ name ] or {}
-    table.insert( _V.SpellNames[ name ], spell )
+    _V.SpellNames[ name ][ #_V.SpellNames[ name ] + 1 ] = spell
 end
+
+--- @type table< string, table< string > >
+_V.ActionResources = {}
+for _,type in ipairs( Ext.StaticData.GetAll( "ActionResourceGroup" ) ) do
+    local data = Ext.StaticData.Get( type, "ActionResourceGroup" )
+    if data then
+        _V.ActionResources[ data.Name ] = {}
+        for _,i in pairs( data.ActionResourceDefinitions ) do
+            _V.ActionResources[ data.Name ][ #_V.ActionResources[ data.Name ] + 1 ] = i
+        end
+    end
+end
+for _,type in ipairs( Ext.StaticData.GetAll( "ActionResource" ) ) do
+    local data = Ext.StaticData.Get( type, "ActionResource" )
+    if data then
+        _V.ActionResources[ data.Name ] = { data.ResourceUUID }
+    end
+end
+
+_V.JsonBlueprint = Ext.Json.Parse( Ext.IO.LoadFile( "Mods/Scaling Difficulty/MCM_blueprint.json", "data" ) )
 
 local class
 for line in Ext.IO.LoadFile( "Mods/Scaling Difficulty/ScriptExtender/Lua/Server/Variables.lua", "data" ):gmatch( "[^\r\n]+" ) do

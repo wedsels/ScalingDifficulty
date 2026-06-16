@@ -99,17 +99,11 @@ return function( _V )
     end
 
     _F.IsElite = function( ent )
-        local uuid = _F.UUID( ent )
-
-        if not uuid then
-            return false
-        end
-
         if ent.ServerCharacter and ent.ServerCharacter.Template and ent.ServerCharacter.Template.CombatComponent and ent.ServerCharacter.Template.CombatComponent.IsBoss then
             return true
         end
 
-        if ent.ActionResources and ent.ActionResources.Resources and
+        if ent.ActionResources and
             (
                 ent.ActionResources.Resources[ "732e23a8-bb1d-4bec-a4df-1dd0e03b56c4" ] or
                 ent.ActionResources.Resources[ "4ebba3a3-f42e-42a6-87af-d36592ba8d49" ] or
@@ -117,31 +111,72 @@ return function( _V )
             )
         then return true end
 
+        if ent.CombatParticipant then
+            for _,i in pairs( ent.CombatParticipant.Flags ) do
+                if i == "IsBoss" then
+                    return true
+                end
+            end
+        end
+
         if ent.ServerPassiveBase then
-            for _,t in ipairs( ent.ServerPassiveBase.Passives ) do
-                if t:find( "Legendary" ) then
+            for _,i in pairs( ent.ServerPassiveBase.Passives ) do
+                if i:find( "Legendary" ) then
                     return true
                 end
             end
         end
 
         if ent.DisplayName then
-            local str = Ext.Loca.GetTranslatedString( ent.DisplayName.Title.Handle.Handle )
-            if str and str ~= "" and str ~= "Novice of the Absolute" and str ~= "Matriphagous Child" then
-                return true
+            local h = ent.DisplayName.Title.Handle.Handle
+            if h and h ~= "ls::TranslatedStringRepository::s_HandleUnknown" then
+                local str = Ext.Loca.GetTranslatedString( h )
+                if str and str ~= "" and str ~= "Novice of the Absolute" and str ~= "Matriphagous Child" then
+                    return true
+                end
             end
-        end
-
-        if Osi.IsBoss( uuid ) == 1 then
-            return true
         end
 
         return false
     end
 
-    _F.IsPlayer = function( ent )
-        local uuid = _F.UUID( ent )
+    _F.IsPlayer = function( ent, uuid )
         return not ent.Bound and ent.Stats or Osi.DB_Players:Get( uuid )[ 1 ] or Osi.DB_Origins:Get( uuid )[ 1 ]
+    end
+
+    _F.IsSummon = function( ent )
+        return ent.IsSummon or ent.Faction and ent.Faction.SummonOwner
+    end
+
+    _F.HasResource = function( ent, str )
+        if not ent or not str then return end
+
+        local resources = ent.ActionResources
+        if not resources then return end
+
+        for part in str:gmatch( "[^;]+" ) do
+            local name, amount, group, slotlevel = part:match( "^(.-):(%d+):(%d+):(%d+)$" )
+
+            slotlevel = tonumber( slotlevel )
+
+            local r = _V.ActionResources[ name ]
+            if r then
+                local level = -1
+                for _,i in ipairs( r ) do
+                    local a = resources.Resources[ i ]
+                    if a then
+                        for _,l in pairs( a ) do
+                            if l.MaxAmount > 0 and l.Level > level then level = l.Level end
+                        end
+                    end
+                end
+
+                if level < 0 then return end
+                if slotlevel and level < slotlevel then return end
+            end
+        end
+
+        return true
     end
 
     _F.Blacklist = function()
