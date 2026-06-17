@@ -5,14 +5,6 @@ return function( _V, _F )
     local _E = {}
     _E.__index = _E
 
-    _E.RemoveNPC = function( ent )
-        local uuid = _F.UUID( ent )
-        if not uuid or not _V.Entities[ uuid ] then return end
-
-        _V.Entities[ uuid ]:Recalculate( true )
-        _V.Entities[ uuid ] = nil
-    end
-
     _E.AddNPC = function( ent )
         local uuid = _F.UUID( ent )
         if not uuid or _V.Entities[ uuid ] then return end
@@ -26,7 +18,10 @@ return function( _V, _F )
 
         local xp = Ext.Stats.Get( data.StatsId )
 
-        ent.Vars.HealthCache = ent.Vars.HealthCache or {
+        ent.Vars.SDCache = ent.Vars.SDCache or {}
+        local cache = ent.Vars.SDCache
+        cache.Name = cache.Name or ( ent.DisplayName and Ext.Loca.GetTranslatedString( ent.DisplayName.Name.Handle.Handle ) or ent.ServerCharacter and ent.ServerCharacter.Template.Name or data.StatsId or uuid ):gsub( "[%s%p]", "" ):lower()
+        cache.Health = cache.Health or {
             Hp = health.Hp,
             MaxHp = math.max( 1, health.MaxHp ),
             Percent = health.Hp / math.max( 1, health.MaxHp ),
@@ -35,18 +30,22 @@ return function( _V, _F )
             TransformedMaxHp = 0,
             TransformedPercent = 0
         }
-        ent.Vars.SpellCache = ent.Vars.SpellCache or {}
-        ent.Vars.NameCache = ( ent.Vars.NameCache or ent.DisplayName and Ext.Loca.GetTranslatedString( ent.DisplayName.Name.Handle.Handle ) or ent.ServerCharacter and ent.ServerCharacter.Template.Name or data.StatsId or uuid ):gsub( "[%s%p]", "" ):lower()
+        cache.Stats = cache.Stats or _F.Default( _V.Stats )
+        cache.Resource = cache.Resource or _F.Default( _V.Resource )
+        cache.Skills = cache.Skills or {}
+        cache.Spells = cache.Spells or {}
+        cache.Blacklist = cache.Blacklist or {}
+        cache.Size = cache.Size or 0
+        cache.SpellCount = cache.SpellCount or 0
 
         _V.Entities[ uuid ] = setmetatable( {
-            Name = ent.Vars.NameCache,
             UUID = uuid,
             Instance = ent,
             Disabled = false,
             Faction = "",
             Scaled = false,
-            Type = "",
-            Hub = _V.Hub[ nil ],
+            Type = nil,
+            Hub = nil,
             LevelBase = eoc.Level,
             LevelChange = 0,
             Experience = xp and _V.Experience[ xp.XPReward ],
@@ -55,24 +54,18 @@ return function( _V, _F )
             Stats = _F.Default( _V.Stats ),
             Skills = {},
             Resource = _F.Default( _V.Resource, true ),
-            OldStats = _F.Default( _V.Stats ),
-            OldResource = _F.Default( _V.Resource ),
-            OldSpells = 0,
-            OldBlacklist = {},
-            OldSize = 0,
-            OldSkills = {},
-            OldWeight = data.Weight,
             AC = {
                 Type = false,
                 ACBonus = 0,
                 ACModifier = 0
             },
-            Health = ent.Vars.HealthCache,
             Modifiers = {
                 Original = {},
                 Current = _F.Default( _F.Keys( _V.Abilities ) )
             },
-            SpellCache = ent.Vars.SpellCache
+            Hooks = nil,
+            Cache = cache,
+            RNG = _F.RNG( _F.Hash( uuid ) )
         }, _E )
 
         local entity = _V.Entities[ uuid ]
@@ -81,8 +74,37 @@ return function( _V, _F )
             entity.Modifiers.Original[ k ] = stats.AbilityModifiers[ v ]
         end
 
-        entity:SetFaction()
-        entity:Archetype()
+        entity.Hooks = {
+            Ext.Entity.OnChange( "Stats", function( _,_,i ) entity:SetAbilities( i ) end, ent ),
+            Ext.Entity.OnChange( "Health", function( _,_,i ) entity:SetHealth( i ) end, ent ),
+            Ext.Entity.OnChange( "EocLevel", function( _,_,i ) entity:SetLevel( i ) end, ent ),
+            Ext.Entity.OnChange( "Resistances", function( _,_,i ) entity:SetAC( i ) end, ent ),
+            Ext.Entity.OnChange( "Faction", function( _,_,_ ) entity:SetFaction() end, ent ),
+            Ext.Entity.OnChange(
+                "TurnBased",
+                function( _,_,i )
+                    if i ~= 128 and ent.TurnBased.CanActInCombat then
+                        entity:SetArchetype()
+                    end
+                end,
+                ent
+            ),
+            Ext.Entity.OnCreateDeferred(
+                "LevelChanged",
+                function( _,_,i )
+                    local l = ent.LevelChanged
+                    if l.PreviousLevel == _V.PartyLevel and l.NewLevel > _V.PartyLevel and entity.Type == "Player" then
+                        _V.PartyLevel = l.NewLevel
+                        _E.Update()
+                    end
+                end,
+                ent
+            ),
+            Ext.Entity.OnDestroyOnce( "Active", function( _,_,_ ) entity:Destroy() end, ent )
+        }
+
+        entity:SetFaction( true )
+        entity:SetArchetype( true )
         entity:Recalculate()
     end
 
@@ -92,11 +114,30 @@ return function( _V, _F )
         end
     end
 
-    function _E:SetFaction()
-        self.Faction = self.Instance.Faction and self.Instance.Faction.field_8 or self.Instance.ServerCharacter and self.Instance.ServerCharacter.OriginalTemplate and self.Instance.ServerCharacter.OriginalTemplate.CombatComponent.Faction or ""
+    function _E:Destroy( pass )
+        for _,i in ipairs( self.Hooks ) do
+            Ext.Entity.Unsubscribe( i )
+        end
+
+        if not pass then
+            self:Recalculate( true )
+        end
+        _V.Entities[ self.UUID ] = nil
     end
 
-    function _E:Archetype()
+    function _E:SetFaction( pass )
+        local old = self.Faction
+
+        self.Faction = self.Instance.Faction and self.Instance.Faction.field_8 or self.Instance.ServerCharacter and self.Instance.ServerCharacter.OriginalTemplate and self.Instance.ServerCharacter.OriginalTemplate.CombatComponent.Faction or ""
+
+        if not pass and old ~= self.Faction then
+            self:Recalculate()
+        end
+    end
+
+    function _E:SetArchetype( pass )
+        local old = self.Type
+
         if _F.IsPlayer( self.Instance, self.UUID ) then self.Type = "Player"
         elseif _F.IsSummon( self.Instance ) then self.Type = "Summon"
         elseif _F.IsElite( self.Instance ) then self.Type = "Elite"
@@ -104,12 +145,16 @@ return function( _V, _F )
         else self.Type = "Ally" end
 
         self.Hub = _V.Hub[ self.Type ]
+
+        if not pass and old ~= self.Type then
+            self:Recalculate()
+        end
     end
 
     function _E:Recalculate( disable )
-        if not self.Instance then _V.Entities[ self.UUID ] = nil return end
+        if not self.Instance then self:Destroy( true ) return end
 
-        self.Disabled = disable or _V.Blacklist[ self.Name ]
+        self.Disabled = disable or _V.Blacklist[ self.Cache.Name ]
 
         for _,resource in ipairs( _V.Resource ) do
             if resource ~= "Enabled" then
@@ -132,7 +177,7 @@ return function( _V, _F )
 
         self.LevelChange = ( self.Disabled or not self.Hub.Leveling.Enabled ) and 0 or level - self.LevelBase
 
-        local ran = _F.RNG( _F.Hash( self.UUID ) )
+        local ran = self.RNG:New()
 
         for _,stat in ipairs( _V.Stats ) do
             if stat ~= "Enabled" then
@@ -148,18 +193,15 @@ return function( _V, _F )
             end
         end
 
-        self:SetLevel(
-            function()
-                self:SetAbilities()
-                self:SetAC()
-                self:SetHealth()
-                if not disable then
-                    self:SetBoosts()
-                    self:SetSpells()
-                end
-                self:SetExperience()
-            end
-        )
+        self:SetAbilities()
+        self:SetAC()
+        self:SetHealth()
+        if not disable then
+            self:SetBoosts()
+            self:SetSpells()
+        end
+        self:SetExperience()
+        self:SetLevel()
     end
 
     function _E:SetSpells()
@@ -170,11 +212,7 @@ return function( _V, _F )
 
         local num = self.Hub.General.Enabled and _F.Whole( self.Hub.General.Spells * ( self.LevelBase + self.LevelChange ) ) or 0
         num = math.min( num, 18 )
-        if num == self.OldSpells and _V.SpellBlacklist == self.OldBlacklist then return end
-
-        local spells = {}
-
-        local ran = _F.RNG( _F.Hash( self.UUID ) )
+        if num == self.Cache.SpellCount and _V.SpellBlacklist == self.Cache.Blacklist then return end
 
         local selection = {}
         for i,_ in pairs( _V.Classes[ self.Casting ] or {} ) do
@@ -183,39 +221,37 @@ return function( _V, _F )
             end
         end
 
+        local spells = {}
+        local ran = self.RNG:New()
+
         local roll = ran( num, 2 )
         for _=1,roll do
             if #selection == 0 then break end
 
             local rng = 1 + math.floor( ran( #selection ) )
             if not _V.SpellBlacklist[ selection[ rng ] ] then
-                spells[ #spells + 1 ] = selection[ rng ]
+                spells[ selection[ rng ] ] = true
             end
-            table.remove( selection, rng )
+
+            selection[ rng ] = selection[ #selection ]
+            selection[ #selection ] = nil
         end
 
-        for _,spell in ipairs( spells ) do
-            local match = false
-            for _,old in ipairs( self.SpellCache ) do
-                match = old == spell
-                if match then break end
+        for spell,_ in pairs( spells ) do
+            if not self.Cache.Spells[ spell ] then
+                Osi.AddSpell( self.UUID, spell )
             end
-            if not match then Osi.AddSpell( self.UUID, spell ) end
         end
 
-        for _,old in ipairs( self.SpellCache ) do
-            local match = false
-            for _,spell in ipairs( spells ) do
-                match = spell == old
-                if match then break end
+        for spell,_ in pairs( self.Cache.Spells ) do
+            if not spells[ spell ] then
+                Osi.RemoveSpell( self.UUID, spell )
             end
-            if not match then Osi.RemoveSpell( self.UUID, old ) end
         end
 
-        self.OldSpells = num
-        self.OldBlacklist = _V.SpellBlacklist
-        self.SpellCache = spells
-        self.Instance.Vars.SpellCache = self.Instance.Vars.SpellCache
+        self.Cache.SpellCount = num
+        self.Cache.Blacklist = _V.SpellBlacklist
+        self.Cache.Spells = spells
     end
 
     function _E:SetAC( index )
@@ -229,15 +265,17 @@ return function( _V, _F )
 
         res.AC = res.AC + ac
         if clean then
-            res.AC = res.AC - self.OldStats.AC
+            res.AC = res.AC - self.Cache.Stats.AC
         end
 
-        self.OldStats.AC = _F.Whole( self.Stats.AC + self.Modifiers.Current.Dexterity - self.Modifiers.Original.Dexterity )
+        self.Cache.Stats.AC = _F.Whole( self.Stats.AC + self.Modifiers.Current.Dexterity - self.Modifiers.Original.Dexterity )
 
         self.Instance:Replicate( "Resistances" )
     end
 
     function _E:SetAbilities( index )
+        if index == -1 then return end
+
         local stats = self.Instance.Stats
         if not stats then return end
 
@@ -251,7 +289,7 @@ return function( _V, _F )
 
             stats.Abilities[ v ] = stats.Abilities[ v ] + stat
             if clean then
-                stats.Abilities[ v ] = stats.Abilities[ v ] - self.OldStats[ k ]
+                stats.Abilities[ v ] = stats.Abilities[ v ] - self.Cache.Stats[ k ]
             else
                 self.Modifiers.Original[ k ] = stats.AbilityModifiers[ v ]
             end
@@ -259,7 +297,7 @@ return function( _V, _F )
             stats.AbilityModifiers[ v ] = math.floor( ( stats.Abilities[ v ] - 10.0 ) / 2.0 )
             self.Modifiers.Current[ k ] = stats.AbilityModifiers[ v ]
 
-            self.OldStats[ k ] = stat
+            self.Cache.Stats[ k ] = stat
         end
 
         for i,k in ipairs( _V.AbilitiesMatch ) do
@@ -269,16 +307,12 @@ return function( _V, _F )
                 self.Skills[ i ] = stats.Skills[ i ];
             end
 
-            if index == -1 then
-                self.Skills[ i ] = self.Skills[ i ] + ( stats.Skills[ i ] - self.OldSkills[ i ] )
-            end
-
             stats.Skills[ i ] = self.Skills[ i ] + ( stats.AbilityModifiers[ k ] - ( self.Modifiers.Original[ _V.AbilitiesReverse[ k ] ] or 0 ) )
-            self.OldSkills[ i ] = stats.Skills[ i ]
+            self.Cache.Skills[ i ] = stats.Skills[ i ]
         end
 
-        stats.InitiativeBonus = _F.Whole( stats.InitiativeBonus + self.Stats.Initiative - ( clean and self.OldStats.Initiative or 0 ) )
-        self.OldStats.Initiative = self.Stats.Initiative
+        stats.InitiativeBonus = _F.Whole( stats.InitiativeBonus + self.Stats.Initiative - ( clean and self.Cache.Stats.Initiative or 0 ) )
+        self.Cache.Stats.Initiative = self.Stats.Initiative
 
         if self.Type ~= "Player" then
             stats.ProficiencyBonus = 2 + math.floor( ( self.LevelBase + self.LevelChange - 1 ) / 4.0 )
@@ -292,6 +326,8 @@ return function( _V, _F )
     end
 
     function _E:SetHealth( index )
+        if index == -1 then return end
+
         local health = self.Instance.Health
         if not health then return end
 
@@ -299,34 +335,34 @@ return function( _V, _F )
             self:SetAbilities( 79 )
             self:SetAC( 4 )
 
-            if self.Health.Transformed then
-                self.Health.Hp = self.Health.TransformedHp
-                self.Health.MaxHp = self.Health.TransformedMaxHp
-                self.Health.Percent = self.Health.TransformedPercent
+            if self.Cache.Health.Transformed then
+                self.Cache.Health.Hp = self.Cache.Health.TransformedHp
+                self.Cache.Health.MaxHp = self.Cache.Health.TransformedMaxHp
+                self.Cache.Health.Percent = self.Cache.Health.TransformedPercent
             else
-                self.Health.TransformedHp = self.Health.Hp
-                self.Health.TransformedMaxHp = self.Health.MaxHp
-                self.Health.TransformedPercent = self.Health.Percent
+                self.Cache.Health.TransformedHp = self.Cache.Health.Hp
+                self.Cache.Health.TransformedMaxHp = self.Cache.Health.MaxHp
+                self.Cache.Health.TransformedPercent = self.Cache.Health.Percent
 
-                self.Health.Percent = 1
+                self.Cache.Health.Percent = 1
             end
 
-            self.Health.Transformed = not self.Health.Transformed
-        elseif index == -1 or index == 1 or index == 5 or health.Hp <= 0 or Osi.IsActive( self.UUID ) ~= 1 then
-            if health.Hp ~= self.Health.Hp then
-                self.Health.Percent = health.Hp / math.max( 1, health.MaxHp )
-                self.Health.Hp = health.Hp
+            self.Cache.Health.Transformed = not self.Cache.Health.Transformed
+        elseif index == 1 or index == 5 or health.Hp <= 0 or Osi.IsActive( self.UUID ) ~= 1 then
+            if health.Hp ~= self.Cache.Health.Hp then
+                self.Cache.Health.Percent = health.Hp / math.max( 1, health.MaxHp )
+                self.Cache.Health.Hp = health.Hp
             end
-        elseif index ~= 1 and health.MaxHp ~= self.Health.MaxHp then
-            health.Hp = self.Health.Hp
+        elseif index ~= 1 and health.MaxHp ~= self.Cache.Health.MaxHp then
+            health.Hp = self.Cache.Health.Hp
         end
 
         if index == 59 or index == 3 or index == 2 or not index then
             if index then
-                self.Health.MaxHp = health.MaxHp
+                self.Cache.Health.MaxHp = health.MaxHp
             end
 
-            local hp = self.Health.MaxHp + self.Stats.HP
+            local hp = self.Cache.Health.MaxHp + self.Stats.HP
             if self.Type ~= "Player" then
                 hp = hp + self.Modifiers.Current.Constitution * self.LevelChange
                 hp = hp + ( self.Modifiers.Current.Constitution - self.Modifiers.Original.Constitution ) * self.LevelBase
@@ -335,20 +371,24 @@ return function( _V, _F )
 
             health.MaxHp = math.max( 1, _F.Whole( hp ) )
 
-            health.Hp = math.min( health.MaxHp, _F.Whole( health.MaxHp * self.Health.Percent ) )
-            self.Health.Hp = health.Hp
+            health.Hp = math.min( health.MaxHp, _F.Whole( health.MaxHp * self.Cache.Health.Percent ) )
+            self.Cache.Health.Hp = health.Hp
         end
 
         self.Instance:Replicate( "Health" )
-        self.Instance.Vars.HealthCache = self.Instance.Vars.HealthCache
     end
 
-    function _E:SetLevel( fun )
+    function _E:SetLevel( index )
         local eoc = self.Instance.EocLevel
-        if not eoc or self.Type == "Player" then if fun then fun() end return end
+        if not eoc or self.Type == "Player" then return end
 
         local level = self.LevelBase + self.LevelChange
-        if eoc.Level == level then if fun then fun() end return end
+        if eoc.Level == level then return end
+
+        if index ~= -1 then
+            self.Instance:Replicate( "EocLevel" )
+            return
+        end
 
         self.Instance:RemoveComponent( "EocLevel" )
 
@@ -364,8 +404,6 @@ return function( _V, _F )
             function()
                 self.Instance.EocLevel.Level = level
                 self.Instance:Replicate( "EocLevel" )
-
-                if fun then fun() end
             end
         )
     end
@@ -374,8 +412,8 @@ return function( _V, _F )
         local data = self.Instance.Data
         if not data then return end
 
-        if self.OldStats.DamageBonus ~= self.Stats.DamageBonus then
-            local oldstat = _F.Whole( self.OldStats.DamageBonus )
+        if self.Cache.Stats.DamageBonus ~= self.Stats.DamageBonus then
+            local oldstat = _F.Whole( self.Cache.Stats.DamageBonus )
             if oldstat ~= 0 then
                 Osi.RemoveBoosts( self.UUID, string.format( _V.Boosts.DamageBonus, oldstat ), 0, _V.Key, "" )
             end
@@ -385,11 +423,11 @@ return function( _V, _F )
                 Osi.AddBoosts( self.UUID, string.format( _V.Boosts.DamageBonus, stat ), _V.Key, "" )
             end
 
-            self.OldStats.DamageBonus = self.Stats.DamageBonus
+            self.Cache.Stats.DamageBonus = self.Stats.DamageBonus
         end
 
-        if self.OldStats.Attack ~= self.Stats.Attack then
-            local oldstat = _F.Whole( self.OldStats.Attack )
+        if self.Cache.Stats.Attack ~= self.Stats.Attack then
+            local oldstat = _F.Whole( self.Cache.Stats.Attack )
             if oldstat ~= 0 then
                 Osi.RemoveBoosts( self.UUID, string.format( _V.Boosts.RollBonus, "Attack", oldstat ), 0, _V.Key, "" )
             end
@@ -399,12 +437,12 @@ return function( _V, _F )
                 Osi.AddBoosts( self.UUID, string.format( _V.Boosts.RollBonus, "Attack", stat ), _V.Key, "" )
             end
 
-            self.OldStats.Attack = self.Stats.Attack
+            self.Cache.Stats.Attack = self.Stats.Attack
         end
 
-        if self.OldStats.Size ~= self.Stats.Size then
-            if self.OldStats.Size ~= 0.0 then
-                Osi.RemoveBoosts( self.UUID, string.format( _V.Boosts.Size, 1.0 + self.OldStats.Size, 1.0 + self.OldStats.Size, self.OldSize ), 0, _V.Key, "" )
+        if self.Cache.Stats.Size ~= self.Stats.Size then
+            if self.Cache.Stats.Size ~= 0.0 then
+                Osi.RemoveBoosts( self.UUID, string.format( _V.Boosts.Size, 1.0 + self.Cache.Stats.Size, 1.0 + self.Cache.Stats.Size, self.Cache.Size ), 0, _V.Key, "" )
             end
 
             local weight = _F.Whole( ( data.Weight * ( 1.0 + self.Stats.Size ) - data.Weight ) / 1000.0 )
@@ -412,8 +450,8 @@ return function( _V, _F )
                 Osi.AddBoosts( self.UUID, string.format( _V.Boosts.Size, 1.0 + self.Stats.Size, 1.0 + self.Stats.Size, weight ), _V.Key, "" )
             end
 
-            self.OldStats.Size = self.Stats.Size
-            self.OldSize = weight
+            self.Cache.Stats.Size = self.Stats.Size
+            self.Cache.Size = weight
         end
 
         local elvl = self.LevelBase + self.LevelChange
@@ -426,19 +464,19 @@ return function( _V, _F )
                     end
                 end
 
-                if self.OldResource[ resource ] ~= amount then
+                if self.Cache.Resource[ resource ] ~= amount then
                     local level = resource:match( "Level([%d])" ) or 0
                     local boost = resource:gsub( "Level[%d]", "" )
 
-                    if self.OldResource[ resource ] ~= 0 then
-                        Osi.RemoveBoosts( self.UUID, string.format( _V.Boosts.Resource, boost, self.OldResource[ resource ], level ), 0, _V.Key, "" )
+                    if self.Cache.Resource[ resource ] ~= 0 then
+                        Osi.RemoveBoosts( self.UUID, string.format( _V.Boosts.Resource, boost, self.Cache.Resource[ resource ], level ), 0, _V.Key, "" )
                     end
 
                     if amount ~= 0 then
                         Osi.AddBoosts( self.UUID, string.format( _V.Boosts.Resource, boost, amount, level ), _V.Key, "" )
                     end
 
-                    self.OldResource[ resource ] = amount
+                    self.Cache.Resource[ resource ] = amount
                 end
             end
         end
@@ -454,6 +492,48 @@ return function( _V, _F )
         if not base then return end
 
         xp.Experience = math.max( 0, _F.Whole( ( base + self.Stats.Experience ) * ( 1.0 + self.Stats.PercentExperience ) ) )
+    end
+
+    for name,i in pairs( _E ) do
+        if type( i ) == "function" then
+            --- @param self Entity
+            _E[ name ] = function( self, ... )
+                if getmetatable( self ) == _E then
+                    local ret
+                    if _V.Debug then
+                        local time = Ext.Utils.MicrosecTime()
+                        ret = i( self, ... )
+                        time = Ext.Utils.MicrosecTime() - time
+
+                        local extradata
+                        if name == "SetArchetype" then
+                            extradata = self.Type
+                        elseif name == "SetSpells" then
+                            for spell,_ in pairs( self.Cache.Spells ) do
+                                extradata = ( extradata and ( extradata .. ", " ) or "" ) .. spell
+                            end
+                        end
+
+                        print(
+                            string.format(
+                                "\27[33m%-20s\27[0m \27[32m%-15s\27[0m \27[31m%6.1f μs\27[0m \27[34m%s\27[0m",
+                                self.Cache.Name,
+                                name:gsub( "Set", "" ),
+                                time,
+                                extradata or ""
+                            )
+                        )
+                    else
+                        ret = i( self, ... )
+                    end
+
+                    self.Instance.Vars.SDCache = self.Instance.Vars.SDCache
+                    return ret
+                end
+
+                return i( self, ... )
+            end
+        end
     end
 
     return _E

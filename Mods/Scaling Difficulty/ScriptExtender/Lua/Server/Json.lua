@@ -113,6 +113,13 @@ return function( _V )
                         Tooltip = "The names of spells to not give through NPC character Spells sepearated by ','\nEx. lighting arRow,TrUeSTrike",
                         Type = "text",
                         Default = ""
+                    },
+                    {
+                        Id = "Debug",
+                        Name = "Debug",
+                        Tooltip = "Enable or disable the presence of this mod's debug messages in the console window.\nWill marginally reduce this mod's performance.",
+                        Type = "checkbox",
+                        Default = false
                     }
                 }
             }

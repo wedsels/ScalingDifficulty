@@ -4,6 +4,8 @@
 return function( _V, _F, _E )
     Ext.Events.GameStateChanged:Subscribe(
         function( e )
+            if e.FromState == "Running" and e.ToState == "UnloadLevel" then for _,entity in pairs( _V.Entities ) do entity:Destroy( true ) end return end
+
             if e.FromState == "Running" and e.ToState == "Save" then _E.Update( true ) return end
             if e.FromState == "Save" and e.ToState == "Running" then _E.Update() return end
 
@@ -39,6 +41,8 @@ return function( _V, _F, _E )
                 end
 
                 _F.Blacklist()
+
+                _V.Debug = MCM.Get( "Debug" )
             end
 
             SetSettings()
@@ -51,72 +55,6 @@ return function( _V, _F, _E )
             end
 
             Ext.Entity.OnCreateDeferred( "Active", function( ent ) _E.AddNPC( ent ) end )
-            Ext.Entity.OnDestroyDeferred( "Active", function( ent ) _E.RemoveNPC( ent ) end )
-
-            Ext.Entity.OnCreateDeferred(
-                "LevelChanged",
-                function( ent, _, index )
-                    local uuid = _F.UUID( ent )
-                    if not uuid then return end
-
-                    local l = ent.LevelChanged
-                    if l.PreviousLevel == _V.PartyLevel and l.NewLevel > _V.PartyLevel and Osi.DB_Players:Get( uuid )[ 1 ] then
-                        _V.PartyLevel = l.NewLevel
-                        _E.Update()
-                    end
-                end
-            )
-
-            local function GetEntity( ent )
-                local uuid = _F.UUID( ent )
-                if not uuid then return end
-
-                return _V.Entities[ uuid ]
-            end
-
-            local function Dispatch( func, ent, index )
-                local entity = GetEntity( ent )
-                if not entity then return end
-
-                entity[ func ]( entity, index )
-            end
-
-            Ext.Entity.OnChange( "Stats", function( ent, _, index ) Dispatch( "SetAbilities", ent, index ) end )
-            Ext.Entity.OnChange( "Health", function( ent, _, index ) Dispatch( "SetHealth", ent, index ) end )
-            Ext.Entity.OnChange( "EocLevel", function( ent, _ ) Dispatch( "SetLevel", ent ) end )
-            Ext.Entity.OnChange( "Resistances", function( ent, _, index ) Dispatch( "SetAC", ent, index ) end )
-
-            Ext.Entity.OnChange(
-                "TurnBased",
-                function( ent, _, index )
-                    if index == 128 or not ent.TurnBased.CanActInCombat then return end
-
-                    local entity = GetEntity( ent )
-                    if not entity then return end
-
-                    local old = entity.Type
-                    entity:Archetype()
-
-                    if old ~= entity.Type then
-                        entity:Recalculate()
-                    end
-                end
-            )
-
-            Ext.Entity.OnChange(
-                "Faction",
-                function( ent, _, index )
-                    local entity = GetEntity( ent )
-                    if not entity then return end
-
-                    local old = entity.Faction
-                    entity:SetFaction()
-
-                    if old ~= entity.Faction then
-                        entity:Recalculate()
-                    end
-                end
-            )
         end
     )
 end

@@ -28,7 +28,9 @@ if MCM then
                 return
             end
 
-            if payload.settingId == "Seed" then
+            if payload.settingId == "Debug" then
+                _V.Debug = payload.value
+            elseif payload.settingId == "Seed" then
                 local modvar = Ext.Vars.GetModVariables( ModuleUUID )
                 modvar.Seed = math.random( math.maxinteger )
                 _V.Seed = modvar.Seed

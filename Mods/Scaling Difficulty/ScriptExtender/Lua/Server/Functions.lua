@@ -34,6 +34,12 @@ return function( _V )
     _F.RNG = function( seed )
         local self = { seed = seed + _V.Seed }
 
+        function self:New()
+            self.seed = seed + _V.Seed
+
+            return self
+        end
+
         setmetatable(
             self,
             {

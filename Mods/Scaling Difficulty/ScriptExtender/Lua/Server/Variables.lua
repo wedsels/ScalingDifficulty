@@ -14,15 +14,14 @@ local settings = {
 }
 
 Ext.Vars.RegisterModVariable( ModuleUUID, "Seed", settings )
-Ext.Vars.RegisterUserVariable( "HealthCache", settings )
-Ext.Vars.RegisterUserVariable( "SpellCache", settings )
-Ext.Vars.RegisterUserVariable( "NameCache", settings )
+Ext.Vars.RegisterUserVariable( "SDCache", settings )
 
 --- @class _V
 local _V = {}
 
 _V.Key = "Scaling Difficulty"
 _V.Seed = 0
+_V.Debug = false
 
 _V.PartyLevel = 0
 
@@ -116,8 +115,18 @@ _V.NPC = {
 --- @field Original Stats
 --- @field Current Stats
 
---- @class Entity
+--- @class Cache
 --- @field Name string
+--- @field Health Health
+--- @field Stats Stats
+--- @field Resource Resource
+--- @field Skills table< number >
+--- @field Spells table< string, boolean >
+--- @field Blacklist table< string, boolean >
+--- @field Size number
+--- @field SpellCount number
+
+--- @class Entity
 --- @field UUID string
 --- @field Instance any
 --- @field Disabled boolean
@@ -133,16 +142,11 @@ _V.NPC = {
 --- @field Stats Stats
 --- @field Skills table< number >
 --- @field Resource Resource
---- @field OldStats Stats
---- @field OldSkills table< number >
---- @field OldResource Resource
---- @field OldSpells number
---- @field OldBlacklist table< string, boolean >
---- @field OldSize number
---- @field OldWeight number
---- @field Health Health
 --- @field Modifiers Modifiers
 --- @field SpellCache table< string >
+--- @field Hooks table< number >
+--- @field Cache Cache
+--- @field RNG any
 
 --- @type table< string, Entity >
 _V.Entities = {}
